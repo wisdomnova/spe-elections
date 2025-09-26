@@ -1,28 +1,31 @@
 // lib/auth.ts
-import { SignJWT, jwtVerify } from 'jose';
+import jwt from 'jsonwebtoken';
 import { cookies } from 'next/headers';
-import { NextRequest } from 'next/server';
 
-const secretKey = new TextEncoder().encode(process.env.JWT_SECRET_KEY);
+const JWT_SECRET = process.env.JWT_SECRET_KEY || 'your-default-secret-key';
 
-export async function createToken(payload: any) {
-  return await new SignJWT(payload)
-    .setProtectedHeader({ alg: 'HS256' })
-    .setExpirationTime('24h')
-    .sign(secretKey);
+export interface SessionData {
+  id: string;
+  email: string;
+  spe_number: string;
+  level: number;
 }
 
-export async function verifyToken(token: string) {
+export function createToken(payload: SessionData) {
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: '24h' });
+}
+
+export function verifyToken(token: string): SessionData | null {
   try {
-    const { payload } = await jwtVerify(token, secretKey);
-    return payload;
+    const decoded = jwt.verify(token, JWT_SECRET);
+    return decoded as SessionData;
   } catch (error) {
     return null;
   }
 }
 
-export async function getSession() {
+export async function getSession(): Promise<SessionData | null> {
   const token = (await cookies()).get('auth-token')?.value;
   if (!token) return null;
-  return await verifyToken(token);
+  return verifyToken(token);
 }

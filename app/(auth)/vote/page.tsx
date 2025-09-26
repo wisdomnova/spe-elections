@@ -1,3 +1,4 @@
+// app/(auth)/vote/page.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -24,21 +25,43 @@ export default function VotePage() {
   const router = useRouter();
 
   useEffect(() => {
-    fetchCandidates();
-    fetchVotedPositions();
-  }, []);
+    const checkAuthAndFetchData = async () => {
+      try {
+        const response = await fetch('/api/auth/check');
+        if (!response.ok) {
+          router.push('/login');
+          return;
+        }
+        await Promise.all([fetchCandidates(), fetchVotedPositions()]);
+      } catch (err) {
+        console.error('Auth check failed:', err);
+        router.push('/login');
+      }
+    };
+
+    checkAuthAndFetchData();
+  }, [router]);
 
   const fetchVotedPositions = async () => {
     try {
-      const response = await fetch('/api/votes');
+      const response = await fetch('/api/votes', {
+        headers: { 'Cache-Control': 'no-cache' }
+      });
+      
+      if (!response.ok) {
+        if (response.status === 401) {
+          router.push('/login');
+          return;
+        }
+        throw new Error('Failed to fetch voted positions');
+      }
+      
       const data = await response.json();
-      
-      if (!response.ok) throw new Error(data.error);
-      
       if (data.votes) {
         setVotedPositions(new Set(data.votes.map((v: any) => v.position)));
       }
     } catch (err: any) {
+      toast.error('Failed to fetch your voting history');
       console.error('Error fetching voted positions:', err);
     }
   };
@@ -51,9 +74,16 @@ export default function VotePage() {
         .order('position');
 
       if (error) throw error;
-      setCandidates(data || []);
+      
+      if (!data || data.length === 0) {
+        setError('No candidates found');
+        return;
+      }
+      
+      setCandidates(data);
     } catch (err: any) {
-      setError(err.message);
+      setError('Failed to load candidates');
+      toast.error('Failed to load candidates');
     } finally {
       setLoading(false);
     }
@@ -113,7 +143,37 @@ export default function VotePage() {
   const currentCandidates = candidates.filter(c => c.position === uniquePositions[currentPosition]);
   const progress = ((currentPosition + 1) / uniquePositions.length) * 100;
 
-  // ...existing loading and error JSX...
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading candidates...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error && !candidates.length) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white flex items-center justify-center p-4">
+        <div className="bg-white rounded-xl shadow-lg p-6 max-w-md w-full">
+          <div className="text-red-600 text-center mb-4">
+            <svg className="w-12 h-12 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-semibold text-center">{error}</h3>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-4 w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white py-8">
@@ -123,7 +183,20 @@ export default function VotePage() {
           animate={{ opacity: 1, y: 0 }}
           className="bg-white rounded-xl shadow-lg p-6 mb-8"
         >
-          {/* ...existing progress bar JSX... */}
+          <div className="mb-6">
+            <div className="h-2 bg-gray-100 rounded-full">
+              <motion.div
+                className="h-full bg-blue-600 rounded-full"
+                style={{ width: `${progress}%` }}
+                initial={{ width: 0 }}
+                animate={{ width: `${progress}%` }}
+                transition={{ duration: 0.5 }}
+              />
+            </div>
+            <div className="mt-2 text-center text-sm text-gray-600">
+              Position {currentPosition + 1} of {uniquePositions.length}
+            </div>
+          </div>
 
           <motion.h2
             key={currentPosition}
@@ -166,7 +239,26 @@ export default function VotePage() {
             ))}
           </div>
 
-          {/* ...existing navigation buttons... */}
+          <div className="mt-8 flex justify-between">
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setCurrentPosition(Math.max(0, currentPosition - 1))}
+              disabled={currentPosition === 0 || voting}
+              className="px-6 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50 transition-colors"
+            >
+              Previous
+            </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setCurrentPosition(Math.min(uniquePositions.length - 1, currentPosition + 1))}
+              disabled={currentPosition === uniquePositions.length - 1 || voting}
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            >
+              Next
+            </motion.button>
+          </div>
         </motion.div>
 
         {error && (
