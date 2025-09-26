@@ -61,7 +61,7 @@ export async function POST(request: Request) {
       .from('candidates')
       .select('position', { count: 'exact', head: false })
       .limit(1000);
-    
+     
     const { data: userVotes } = await supabase
       .from('votes')
       .select('position')

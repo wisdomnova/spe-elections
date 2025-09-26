@@ -116,7 +116,7 @@ export default function Home() {
                   Learn More
                 </Link>
               </motion.div>
-            </motion.div>
+            </motion.div> 
           </div>
         </motion.main>
 
