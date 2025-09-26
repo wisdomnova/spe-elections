@@ -92,13 +92,18 @@ export async function POST(request: Request) {
       throw transactionError;
     }
 
-    // Get total unique positions from candidates (case-insensitive)
+    // Get all positions and normalize them client-side
     const { data: positions, error: positionsError } = await supabase
       .from('candidates')
       .select('position')
-      .select('DISTINCT LOWER(TRIM(position))');
+      .limit(1000);
 
     if (positionsError) throw positionsError;
+
+    // Get unique normalized positions
+    const uniquePositions = new Set(
+      positions?.map(p => p.position.toLowerCase().trim()) || []
+    );
 
     // Get user's votes
     const { data: userVotes, error: userVotesError } = await supabase
@@ -111,8 +116,9 @@ export async function POST(request: Request) {
     const uniqueVotedPositions = new Set(
       userVotes?.map(v => v.position.toLowerCase().trim())
     );
-    const hasCompletedVoting = positions && 
-      uniqueVotedPositions.size === positions.length;
+
+    const hasCompletedVoting = uniquePositions.size > 0 && 
+      uniqueVotedPositions.size === uniquePositions.size;
 
     // Update user's voting status if completed
     if (hasCompletedVoting) {
