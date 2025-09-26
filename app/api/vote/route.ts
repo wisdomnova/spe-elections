@@ -43,12 +43,15 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
-    // Verify candidate exists and matches position
+    // Normalize position
+    const normalizedPosition = position.toLowerCase().trim();
+
+    // Verify candidate exists and matches position (case-insensitive)
     const { data: candidate, error: candidateError } = await supabase
       .from('candidates')
       .select('id, position')
       .eq('id', candidateId)
-      .eq('position', position)
+      .ilike('position', normalizedPosition)
       .single();
 
     if (candidateError || !candidate) {
@@ -63,7 +66,7 @@ export async function POST(request: Request) {
       .from('votes')
       .select('*')
       .eq('user_id', session.id)
-      .eq('position', position)
+      .ilike('position', normalizedPosition)
       .single();
 
     if (voteCheckError && voteCheckError.code !== 'PGRST116') {
@@ -77,25 +80,23 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
-    // Insert vote record
-    const { error: voteError } = await supabase
-      .from('votes')
-      .insert([{
-        user_id: session.id,
-        candidate_id: candidateId,
-        position: position,
-        voted_at: new Date().toISOString()
-      }]);
+    // Begin transaction
+    const { error: transactionError } = await supabase.rpc('cast_vote', {
+      p_user_id: session.id,
+      p_candidate_id: candidateId,
+      p_position: normalizedPosition,
+      p_voted_at: new Date().toISOString()
+    });
 
-    if (voteError) {
-      throw voteError;
+    if (transactionError) {
+      throw transactionError;
     }
 
-    // Get total unique positions from candidates
+    // Get total unique positions from candidates (case-insensitive)
     const { data: positions, error: positionsError } = await supabase
       .from('candidates')
-      .select('position', { count: 'exact', head: false })
-      .limit(1000);
+      .select('position')
+      .select('DISTINCT LOWER(TRIM(position))');
 
     if (positionsError) throw positionsError;
 
@@ -107,7 +108,9 @@ export async function POST(request: Request) {
 
     if (userVotesError) throw userVotesError;
 
-    const uniqueVotedPositions = new Set(userVotes?.map(v => v.position));
+    const uniqueVotedPositions = new Set(
+      userVotes?.map(v => v.position.toLowerCase().trim())
+    );
     const hasCompletedVoting = positions && 
       uniqueVotedPositions.size === positions.length;
 

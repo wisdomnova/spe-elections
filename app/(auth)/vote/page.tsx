@@ -1,4 +1,3 @@
-// app/(auth)/vote/page.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -6,7 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Image from 'next/image';
-import toast from 'react-hot-toast';
+import toast, { Toaster } from 'react-hot-toast';
 import type { Candidate } from '@/app/types';
 
 // Initialize Supabase client for read-only operations
@@ -58,7 +57,7 @@ export default function VotePage() {
       
       const data = await response.json();
       if (data.votes) {
-        setVotedPositions(new Set(data.votes.map((v: any) => v.position)));
+        setVotedPositions(new Set(data.votes.map((v: any) => v.position.toLowerCase().trim())));
       }
     } catch (err: any) {
       toast.error('Failed to fetch your voting history');
@@ -80,7 +79,25 @@ export default function VotePage() {
         return;
       }
       
-      setCandidates(data);
+      // Group candidates by normalized position
+      const positionGroups = data.reduce((acc, candidate) => {
+        const normalizedPosition = candidate.position.toLowerCase().trim();
+        if (!acc[normalizedPosition]) {
+          acc[normalizedPosition] = [];
+        }
+        acc[normalizedPosition].push({
+          ...candidate,
+          position: normalizedPosition
+        });
+        return acc;
+      }, {} as Record<string, Candidate[]>);
+
+      // Sort positions and flatten array
+      const sortedData = Object.keys(positionGroups)
+        .sort()
+        .flatMap(pos => positionGroups[pos]);
+      
+      setCandidates(sortedData);
     } catch (err: any) {
       setError('Failed to load candidates');
       toast.error('Failed to load candidates');
@@ -142,6 +159,7 @@ export default function VotePage() {
   const uniquePositions = Array.from(new Set(candidates.map(c => c.position)));
   const currentCandidates = candidates.filter(c => c.position === uniquePositions[currentPosition]);
   const progress = ((currentPosition + 1) / uniquePositions.length) * 100;
+  const totalVoted = votedPositions.size;
 
   if (loading) {
     return (
@@ -194,70 +212,77 @@ export default function VotePage() {
               />
             </div>
             <div className="mt-2 text-center text-sm text-gray-600">
-              Position {currentPosition + 1} of {uniquePositions.length}
+              Position {currentPosition + 1} of {uniquePositions.length} • 
+              {Math.round(progress)}% complete • {totalVoted} votes cast
             </div>
           </div>
 
-          <motion.h2
-            key={currentPosition}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="text-2xl font-bold mb-6 text-center text-gray-900"
-          >
-            {uniquePositions[currentPosition]}
-          </motion.h2>
+          <div className="max-w-2xl mx-auto">
+            <motion.h2
+              key={currentPosition}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="text-2xl font-bold mb-6 text-center text-gray-900 capitalize"
+            >
+              {uniquePositions[currentPosition]}
+            </motion.h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {currentCandidates.map((candidate) => (
-              <motion.button
-                key={candidate.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => handleVote(candidate.id)}
-                disabled={voting || votedPositions.has(uniquePositions[currentPosition])}
-                className={`p-6 border ${
-                  votedPositions.has(uniquePositions[currentPosition])
-                    ? 'border-green-500 bg-green-50'
-                    : 'border-gray-200 hover:border-blue-500'
-                } rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-white text-left`}
-              >
-                {candidate.image_url && (
-                  <div className="relative h-48 w-full mb-4 rounded-lg overflow-hidden">
-                    <Image
-                      src={candidate.image_url}
-                      alt={candidate.full_name}
-                      fill
-                      className="object-cover"
-                    />
+            <div className="space-y-4">
+              {currentCandidates.map((candidate) => (
+                <motion.button
+                  key={candidate.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => handleVote(candidate.id)}
+                  disabled={voting || votedPositions.has(uniquePositions[currentPosition])}
+                  className={`w-full p-6 border ${
+                    votedPositions.has(uniquePositions[currentPosition])
+                      ? 'border-green-500 bg-green-50'
+                      : 'border-gray-200 hover:border-blue-500'
+                  } rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-white text-left`}
+                >
+                  <div className="flex items-center gap-4">
+                    {candidate.image_url && (
+                      <div className="relative h-24 w-24 flex-shrink-0 rounded-lg overflow-hidden">
+                        <Image
+                          src={candidate.image_url}
+                          alt={candidate.full_name}
+                          fill
+                          className="object-cover"
+                        />
+                      </div>
+                    )}
+                    <div>
+                      <h3 className="text-xl font-semibold text-gray-900">{candidate.full_name}</h3>
+                      <p className="text-gray-600 mt-2 text-sm">{candidate.bio}</p>
+                    </div>
                   </div>
-                )}
-                <h3 className="text-xl font-semibold text-gray-900">{candidate.full_name}</h3>
-                <p className="text-gray-600 mt-2 text-sm">{candidate.bio}</p>
-              </motion.button>
-            ))}
-          </div>
+                </motion.button>
+              ))}
+            </div>
 
-          <div className="mt-8 flex justify-between">
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => setCurrentPosition(Math.max(0, currentPosition - 1))}
-              disabled={currentPosition === 0 || voting}
-              className="px-6 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50 transition-colors"
-            >
-              Previous
-            </motion.button>
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => setCurrentPosition(Math.min(uniquePositions.length - 1, currentPosition + 1))}
-              disabled={currentPosition === uniquePositions.length - 1 || voting}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
-            >
-              Next
-            </motion.button>
+            <div className="mt-8 flex justify-between">
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setCurrentPosition(Math.max(0, currentPosition - 1))}
+                disabled={currentPosition === 0 || voting}
+                className="px-6 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50 transition-colors"
+              >
+                Previous
+              </motion.button>
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setCurrentPosition(Math.min(uniquePositions.length - 1, currentPosition + 1))}
+                disabled={currentPosition === uniquePositions.length - 1 || voting}
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              >
+                Next
+              </motion.button>
+            </div>
           </div>
         </motion.div>
 
@@ -265,7 +290,7 @@ export default function VotePage() {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-red-50 border border-red-200 text-red-600 p-4 rounded-lg mt-4"
+            className="bg-red-50 border border-red-200 text-red-600 p-4 rounded-lg mt-4 max-w-2xl mx-auto"
           >
             {error}
           </motion.div>
@@ -284,6 +309,21 @@ export default function VotePage() {
           </div>
         </motion.div>
       )}
+
+      {/* Toast Container */}
+      <div className="fixed bottom-4 inset-x-0 flex justify-center">
+        <Toaster
+          position="bottom-center"
+          toastOptions={{
+            duration: 3000,
+            style: {
+              background: '#363636',
+              color: '#fff',
+              marginBottom: '1rem'
+            },
+          }}
+        />
+      </div>
     </div>
   );
 }
